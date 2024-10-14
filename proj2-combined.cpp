@@ -7,56 +7,42 @@
 
 
 // Function for dense-dense matrix multiplication with multithreading, SIMD, and cache optimizations
-Matrix matrix_multiply_dense_combined(const Matrix &A, const Matrix &B) {
-    if (A[0].size() != B.size()) {
-        throw std::invalid_argument("Matrix dimensions do not match for multiplication.");
-    }
+Matrix matrix_multiply_dense_combined(const Matrix &A, const Matrix &B, int blockSize) {
+    int n = A.size();      // Rows in A
+    int m = B.size();      // Rows in B
+    int p = B[0].size();   // Columns in B
 
-    int result_rows = A.size();
-    int result_cols = B[0].size();
-    int inner_dim = B.size();
-    Matrix result(result_rows, std::vector<double>(result_cols, 0.0));
+    // Initialize result matrix C with zeros
+    Matrix C(n, std::vector<double>(p, 0.0));
 
-    // Timer start
-    auto start_time = std::chrono::high_resolution_clock::now();
-
-    // Parallelize outer loop over rows of matrix A
+    // Perform matrix multiplication with loop blocking, SIMD, and multithreading
     #pragma omp parallel for
-    for (int i = 0; i < result_rows; ++i) {
-        // Loop over columns of matrix B
-        for (int j = 0; j < result_cols; ++j) {
-            // Compute dot product of the ith row of A and the jth column of B
-            __m256d sum_vec = _mm256_setzero_pd();  // SIMD vector to accumulate results
+    for (int ii = 0; ii < n; ii += blockSize) {
+        for (int jj = 0; jj < p; jj += blockSize) {
+            for (int kk = 0; kk < m; kk += blockSize) {
+                for (int i = ii; i < std::min(ii + blockSize, n); ++i) {
+                    for (int j = jj; j < std::min(jj + blockSize, p); ++j) {
+                        __m256d c_vec = _mm256_setzero_pd();  // Initialize C[i][j] to zero in a SIMD register
+                        for (int k = kk; k < std::min(kk + blockSize, m); k += 4) {
+                            // Load 4 elements from A[i][k] and B[k][j] into AVX vectors
+                            __m256d a_vec = _mm256_loadu_pd(&A[i][k]);
+                            __m256d b_vec = _mm256_loadu_pd(&B[k][j]);
 
-            // Loop through the common dimension (inner_dim) using SIMD
-            for (int k = 0; k < inner_dim - (inner_dim % 4); k += 4) {
-                // Load 4 elements from row of A and column of B
-                __m256d a_vec = _mm256_loadu_pd(&A[i][k]);
-                __m256d b_vec = _mm256_set_pd(B[k+3][j], B[k+2][j], B[k+1][j], B[k][j]);
+                            // Perform multiply-add (C[i][j] += A[i][k] * B[k][j])
+                            c_vec = _mm256_fmadd_pd(a_vec, b_vec, c_vec);
+                        }
 
-                // Perform SIMD multiplication and accumulate the results
-                sum_vec = _mm256_fmadd_pd(a_vec, b_vec, sum_vec);
-            }
-
-            // Sum up the partial results in the vector
-            double sum[4];
-            _mm256_storeu_pd(sum, sum_vec);
-            result[i][j] = sum[0] + sum[1] + sum[2] + sum[3];
-
-            // Handle any remaining elements that weren't handled by SIMD
-            for (int k = inner_dim - (inner_dim % 4); k < inner_dim; ++k) {
-                result[i][j] += A[i][k] * B[k][j];
+                        // Store the result back into C[i][j]
+                        double temp[4];
+                        _mm256_storeu_pd(temp, c_vec);
+                        C[i][j] += temp[0] + temp[1] + temp[2] + temp[3];
+                    }
+                }
             }
         }
     }
 
-    // Timer stop
-    auto end_time = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration = end_time - start_time;
-    std::cout << "Time taken: " << duration.count() << " s\n";
-    // std::cout.flush();
-
-    return result;
+    return C;
 }
 
 // Function for dense-sparse matrix multiplication with multithreading, SIMD, and cache optimizations
@@ -195,15 +181,18 @@ SparseMatrix matrix_multiply_sparse_sparse_combined(const SparseMatrix &A, const
 }
 
 // Function to test dense-dense matrix multiplication with multi-threading
-void test_dense_combined_multiplication(int N, double sparsity) {
+void test_dense_combined_multiplication(int N, double sparsity, int blockSize) {
     std::cout << N << "\t";
 
     // Initialize matrices
     Matrix A_dense = initialize_dense_matrix(N, N);
     Matrix B_dense = initialize_dense_matrix(N, N);
 
-    
-    Matrix C_dense = matrix_multiply_dense_combined(A_dense, B_dense);
+    auto start = std::chrono::high_resolution_clock::now();
+    Matrix C_dense = matrix_multiply_dense_combined(A_dense, B_dense, blockSize);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    std::cout << "Time taken: " << duration.count() << " s\n";
 }
 
 // Function to test dense-sparse matrix multiplication with multi-threading
@@ -292,7 +281,7 @@ int main() {
     sparsity = 0.1;
     for (int i = 1; i < 11; ++i) {
         int N = i * 200;
-        test_dense_combined_multiplication(N, sparsity);
+        test_dense_combined_multiplication(N, sparsity, blockSize);
     }
 
     return 0;
