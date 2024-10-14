@@ -46,7 +46,7 @@ Matrix matrix_multiply_dense_combined(const Matrix &A, const Matrix &B, int bloc
 }
 
 // Function for dense-sparse matrix multiplication with multithreading, SIMD, and cache optimizations
-Matrix matrix_multiply_dense_sparse_combined(const Matrix &dense, const SparseMatrix &sparse, int blockSize) {
+Matrix matrix_multiply_dense_sparse_combined(const Matrix &A, const SparseMatrix &B, int blockSize) {
     int n = A.size();      // Rows in A (dense)
     int p = B.cols;        // Columns in B (sparse)
 
@@ -82,45 +82,6 @@ Matrix matrix_multiply_dense_sparse_combined(const Matrix &dense, const SparseMa
 
     return C;
 }
-
-// // Function to transpose a sparse matrix
-// SparseMatrix transpose_sparse(const SparseMatrix &B) {
-//     SparseMatrix B_transposed;
-//     B_transposed.rows = B.cols;
-//     B_transposed.cols = B.rows;
-//     B_transposed.row_pointers.resize(B.cols + 1, 0);
-
-//     // Count non-zeros per column (which will become row in transposed)
-//     std::vector<int> counts(B.cols, 0);
-//     for (int i = 0; i < B.row_pointers.size() - 1; ++i) {
-//         for (int j = B.row_pointers[i]; j < B.row_pointers[i + 1]; ++j) {
-//             counts[B.col_indices[j]]++;
-//         }
-//     }
-
-//     // Build row_pointers for transposed
-//     for (int i = 1; i <= B.cols; ++i) {
-//         B_transposed.row_pointers[i] = B_transposed.row_pointers[i - 1] + counts[i - 1];
-//     }
-
-//     B_transposed.values.resize(B.values.size());
-//     B_transposed.col_indices.resize(B.col_indices.size());
-
-//     // Fill in values and col_indices for transposed matrix
-//     std::vector<int> current_index(B.cols, 0);
-//     for (int i = 0; i < B.rows; ++i) {
-//         for (int j = B.row_pointers[i]; j < B.row_pointers[i + 1]; ++j) {
-//             int colB = B.col_indices[j];
-//             int dest_idx = B_transposed.row_pointers[colB] + current_index[colB];
-
-//             B_transposed.values[dest_idx] = B.values[j];
-//             B_transposed.col_indices[dest_idx] = i;
-//             current_index[colB]++;
-//         }
-//     }
-
-//     return B_transposed;
-// }
 
 // Function for sparse-sparse matrix multiplication with multithreading, SIMD, and cache optimizations
 SparseMatrix matrix_multiply_sparse_sparse_combined(const SparseMatrix &A, const SparseMatrix &B, int blockSize) {
@@ -192,7 +153,7 @@ SparseMatrix matrix_multiply_sparse_sparse_combined(const SparseMatrix &A, const
 }
 
 // Function to test dense-dense matrix multiplication with multi-threading
-void test_dense_combined_multiplication(int N, double sparsity) {
+void test_dense_combined_multiplication(int N, double sparsity, int blockSize) {
     std::cout << N << "\t";
 
     // Initialize matrices
@@ -200,7 +161,7 @@ void test_dense_combined_multiplication(int N, double sparsity) {
     Matrix B_dense = initialize_dense_matrix(N, N);
 
     auto start = std::chrono::high_resolution_clock::now();
-    Matrix C_dense = matrix_multiply_dense_combined(A_dense, B_dense);
+    Matrix C_dense = matrix_multiply_dense_combined(A_dense, B_dense, blockSize);
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = end - start;
     std::cout << "Time taken: " << duration.count() << " s\n";
